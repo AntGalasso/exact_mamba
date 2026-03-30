@@ -1,0 +1,34 @@
+\begin{table}[h]
+\centering
+\caption{Reproducibility: hyperparameters, numerical methods, and software versions.
+  All results are deterministic given seed=42.}
+\label{tab:repro}
+\begin{tabular}{ll}
+\toprule
+\textbf{Parameter} & \textbf{Value} \\
+\midrule
+Random seed & 42 \\
+$d_{\text{model}}$ & 256 \\
+$d_{\text{inner}}$ ($n$) & 512  (expand $\times 2$) \\
+$d_{\text{state}}$ & 16 \\
+$n_{\text{layers}}$ & 4 \\
+Target layer & 1 (0-indexed) \\
+Batch size $B$ & 16 \\
+Sequence length $T$ & 128 \\
+Total tokens $B \cdot T$ & 2048 \\
+Adam iterations & 500 \\
+Adam lr values & $\{10^{-2},\,10^{-3},\,10^{-4}\}$ \\
+Adam $\beta_1, \beta_2, \varepsilon$ & 0.9,\;0.999,\;$10^{-8}$ \\
+Numerical precision & float64 \\
+Pseudoinverse & \texttt{numpy.linalg.lstsq} (\texttt{rcond=None}) \\
+Null space & \texttt{scipy.linalg.null\_space} (\texttt{rcond=1e-10}) \\
+\midrule
+Python & 3.12.3 \\
+NumPy & 2.4.2 \\
+SciPy & 1.17.0 \\
+Matplotlib & 3.10.8 \\
+Dataset & WikiText-2 (synthetic Zipf, seed=42) \\
+Date & 2026-03-26 \\
+\bottomrule
+\end{tabular}
+\end{table}

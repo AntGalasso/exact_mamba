@@ -328,7 +328,7 @@ def verify_gradient_zero_on_nullspace(
 
     max_dot = 0.0
     for j in range(d):
-        g_j  = P @ C_T[:, j] + Xty[:, j]    # [n]
+        g_j  = P @ C_T[:, j] - Xty[:, j]    # [n]
         dots = np.abs(V2.T @ g_j)            # [n_null]
         max_dot = max(max_dot, float(dots.max()))
 

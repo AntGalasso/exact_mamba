@@ -13,6 +13,10 @@ import random
 import argparse
 import time
 import pathlib
+try:
+    import torch
+except ImportError:
+    torch = None
 
 import numpy as np
 
@@ -21,7 +25,12 @@ os.chdir(pathlib.Path(__file__).parent)
 
 from config import Config
 from data import load_wikitext2, get_fixed_batch, get_sequential_batches
-from mamba_minimal import MambaNumpyModel
+try:
+    from mamba_minimal import Mamba as MambaModel
+    USE_TORCH = True
+except ImportError:
+    from mamba_minimal import MambaNumpyModel as MambaModel
+    USE_TORCH = False
 from extract import extract_XY, verify_dimensions
 from experiments import (
     experiment_1_residual_comparison,
@@ -128,24 +137,25 @@ def main():
 
     # ── 1. Data ──────────────────────────────────────────────────────────────
     print("\n[1/7] Loading corpus...")
-    data = load_wikitext2(cfg)
-    input_ids, target_ids = get_fixed_batch(data["train_ids"], cfg)
+    train_ids, val_ids = load_wikitext2(cfg)
+    input_ids, target_ids = get_fixed_batch(train_ids, cfg)
     print(f"  Fixed batch: input {input_ids.shape}  target {target_ids.shape}")
 
     # ── 2. Model ─────────────────────────────────────────────────────────────
     print("\n[2/7] Building MAMBA model (NumPy)...")
     set_all_seeds(cfg.seed)
-    model = MambaNumpyModel(cfg)
-    total_params = sum(
-        v.size for layer in model.layers
-        for v in [layer.in_proj, layer.out_proj, layer.x_proj, layer.dt_proj_W]
-    )
+    model = MambaModel(cfg)
+    if USE_TORCH:
+        device = 'cuda' if torch.cuda.is_available() else 'cpu'
+        model = model.to(device)
+        print(f"  Device: {device}")
+    total_params = sum(p.numel() for p in model.parameters())
     print(f"  Approximate param count: {total_params:,}")
     print(f"  d_model={cfg.d_model}  d_inner={cfg.d_inner}  n_layers={cfg.n_layers}")
 
     # ── 3. Extract X, Y ──────────────────────────────────────────────────────
     print(f"\n[3/7] Extracting activations from layer {cfg.target_layer}...")
-    X, Y = extract_XY(model, input_ids, target_ids, cfg.target_layer, cfg)
+    X, Y = extract_XY(model, input_ids, cfg.target_layer, cfg)
     verify_dimensions(X, Y, cfg)
 
     # ── 4. Experiment 1 ──────────────────────────────────────────────────────
@@ -153,7 +163,40 @@ def main():
     res1 = experiment_1_residual_comparison(X, Y, cfg)
     plot_exp1_residual(res1, cfg.output_dir)
 
+
+    
     # ── 5. Experiments 2–3 ───────────────────────────────────────────────────
+   
+    # ── DEBUG CHECK ─────────────────────────────────────────────────────────
+    print("\n[DEBUG] Checking X and Y before Experiments 2–3...")
+
+    print("X shape:", X.shape)
+    print("Y shape:", Y.shape)
+
+    # dtype check
+    if hasattr(X, "dtype"):
+        print("X dtype:", X.dtype)
+    if hasattr(Y, "dtype"):
+        print("Y dtype:", Y.dtype)
+
+    # basic assertions
+    assert X.ndim == 2, f"X must be 2D, got {X.shape}"
+    assert Y.ndim == 2, f"Y must be 2D, got {Y.shape}"
+    assert X.shape[0] == Y.shape[0], "Mismatch in number of samples between X and Y"
+
+    # optional stats
+    try:
+        import numpy as np
+        X_np = X.detach().cpu().numpy() if hasattr(X, "detach") else X
+        Y_np = Y.detach().cpu().numpy() if hasattr(Y, "detach") else Y
+
+        print("X mean/std:", np.mean(X_np), np.std(X_np))
+        print("Y mean/std:", np.mean(Y_np), np.std(Y_np))
+    except Exception as e:
+        print("Could not compute stats:", e)
+
+    print("[DEBUG] OK → proceeding to Experiments 2–3\n")
+        
     print("\n[5/7] Experiments 2–3: Structural characterisation...")
     res2 = experiment_2_anchor_sweep(X, Y, cfg)
     res3 = experiment_3_null_space(X, Y, cfg)
@@ -165,8 +208,8 @@ def main():
     # ── 6. Experiments 4–5 ───────────────────────────────────────────────────
     if not args.skip_training:
         print("\n[6/7] Experiments 4–5: Hybrid training loop...")
-        train_batches = get_sequential_batches(data["train_ids"], cfg)
-        val_batches   = get_sequential_batches(data["val_ids"],   cfg)
+        train_batches = get_sequential_batches(train_ids, cfg)
+        val_batches   = get_sequential_batches(val_ids,   cfg)
         print(f"  Train batches: {len(train_batches)}  Val batches: {len(val_batches)}")
 
         set_all_seeds(cfg.seed)

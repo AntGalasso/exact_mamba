@@ -41,6 +41,9 @@ class Config:
     # Paths
     output_dir: Path = Path("outputs")
     cache_dir: Path = Path(".cache")
+    
+    shuffle_data: bool = True
+    train_split: float = 0.9
 
     def __post_init__(self):
         self.output_dir.mkdir(parents=True, exist_ok=True)
