@@ -1,4 +1,4 @@
-# Exact QP Solver per MAMBA — README Completo
+# Exact QP Solver per MAMBA
 
 > **Un esperimento per dimostrare che una parte dell'addestramento delle reti neurali moderne può essere risolta esattamente, in un solo passo algebrico, invece di usare centinaia di iterazioni di ottimizzazione approssimata.**
 
