@@ -55,6 +55,108 @@ def set_all_seeds(seed: int):
     np.random.seed(seed)
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Summary printers
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _print_exp4_summary(res4: dict):
+    """Extended console summary for Experiment 4."""
+    w = 60
+    full    = res4.get("_full", {})
+    k_steps = res4.get("_k_step_values", [])
+    b_final = res4.get("_baseline_final", float("nan"))
+
+    print(f"\n  ┌{'─'*w}┐")
+    print(f"  │{'EXPERIMENT 4  —  Hybrid Training Protocol':^{w}}│")
+    print(f"  ├{'─'*w}┤")
+    print(f"  │  Metric: perplexity proxy = exp(MSE)  on val split{'':>9}│")
+    print(f"  ├{'─'*w}┤")
+    print(f"  │  Adam baseline  final ppl proxy : {b_final:.6f}{'':>18}│")
+
+    for k in k_steps:
+        if k not in full:
+            continue
+        hf  = full[k]["perplexity"][-1]
+        imp = (b_final - hf) / b_final * 100 if b_final > 0 else 0.0
+        sgn = "▼" if imp > 0 else "▲"
+        n_corr = len(full[k]["correction_steps"])
+        corr_data = full[k].get("residual_at_correction", [])
+        avg_drop = (float(np.mean([r["drop"] for r in corr_data]))
+                    if corr_data else float("nan"))
+        print(f"  │  Hybrid k_step={k:3d}  ppl: {hf:.6f}  "
+              f"({sgn}{abs(imp):.2f}%)  corr: {n_corr:3d}  "
+              f"Δres: {avg_drop:.3e}  │")
+
+    # Highlight best hybrid
+    best_k = None
+    best_ppl = b_final
+    for k in k_steps:
+        if k in full:
+            fp = full[k]["perplexity"][-1]
+            if fp < best_ppl:
+                best_ppl = fp
+                best_k   = k
+    print(f"  ├{'─'*w}┤")
+    if best_k is not None:
+        imp = (b_final - best_ppl) / b_final * 100
+        print(f"  │  Best hybrid: k_step={best_k}  ppl={best_ppl:.6f}  "
+              f"improvement={imp:.2f}% vs baseline{'':>5}│")
+    else:
+        print(f"  │  No hybrid variant outperformed baseline.{'':>18}│")
+    print(f"  └{'─'*w}┘")
+
+
+def _print_exp5_summary(res5: dict):
+    """Extended console summary for Experiment 5."""
+    w = 60
+    ranks     = res5.get("ranks",        res5.get("rank",        []))
+    conds     = res5.get("cond_numbers", res5.get("cond",        []))
+    null_dims = res5.get("null_dims",    res5.get("null_dim",    []))
+    is_uniq   = res5.get("is_unique", [])
+    r_before  = res5.get("residual_before", [])
+    r_after   = res5.get("residual_after",  [])
+    steps     = res5.get("steps", res5.get("correction_step", []))
+    n_corr    = len(ranks)
+
+    print(f"\n  ┌{'─'*w}┐")
+    print(f"  │{'EXPERIMENT 5  —  Algebraic Monitoring':^{w}}│")
+    print(f"  ├{'─'*w}┤")
+    print(f"  │  Total exact corrections recorded : {n_corr:4d}{'':>20}│")
+
+    if n_corr > 0:
+        rank_stable = min(ranks) == max(ranks)
+        n_sing      = sum(1 for nd in null_dims if nd > 0)
+        all_uniq    = all(is_uniq)
+        avg_drop    = (float(np.mean([b - a for b, a in zip(r_before, r_after)]))
+                       if r_before else float("nan"))
+
+        print(f"  │  rank(XᵀX)  min={min(ranks):3d}  max={max(ranks):3d}  "
+              f"stable={str(rank_stable):<5}{'':>17}│")
+        print(f"  │  null_dim   min={min(null_dims):3d}  max={max(null_dims):3d}{'':>34}│")
+        print(f"  │  cond(XᵀX)  min={min(conds):.3e}  max={max(conds):.3e}{'':>19}│")
+        print(f"  │  Batches with nontrivial null space : "
+              f"{n_sing}/{n_corr} ({100*n_sing/n_corr:.1f}%){'':>12}│")
+        print(f"  │  Uniqueness always satisfied        : "
+              f"{str(all_uniq):<5}{'':>24}│")
+        print(f"  │  Avg residual drop per correction   : "
+              f"{avg_drop:.4e}{'':>14}│")
+
+        # Print a compact table of every recorded correction step
+        print(f"  ├{'─'*w}┤")
+        header = (f"  │  {'step':>5}  {'rank':>4}  {'null':>4}  "
+                  f"{'cond':>9}  {'uniq':>5}  {'res_before':>10}  {'res_after':>10}  │")
+        print(header)
+        print(f"  ├{'─'*w}┤")
+        for i in range(n_corr):
+            rb_str = f"{r_before[i]:.3e}" if r_before else "  n/a    "
+            ra_str = f"{r_after[i]:.3e}"  if r_after  else "  n/a    "
+            print(f"  │  {steps[i]:>5}  {ranks[i]:>4}  {null_dims[i]:>4}  "
+                  f"{conds[i]:>9.2e}  {str(is_uniq[i] if is_uniq else '?'):>5}  "
+                  f"{rb_str:>10}  {ra_str:>10}  │")
+
+    print(f"  └{'─'*w}┘")
+
+
 def print_final_summary(all_results: dict):
     res1 = all_results.get("exp1", {})
     res2 = all_results.get("exp2", [])
@@ -106,6 +208,18 @@ def print_final_summary(all_results: dict):
         print(f"    Adam steps to 1e-8: {s8}  (best lr={best_lr:.0e})")
     print("=" * 60)
 
+    # Experiments 4 and 5 extended summaries
+    if "exp4" in all_results:
+        print()
+        _print_exp4_summary(all_results["exp4"])
+    if "exp5" in all_results:
+        print()
+        _print_exp5_summary(all_results["exp5"])
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Main pipeline
+# ─────────────────────────────────────────────────────────────────────────────
 
 def main():
     parser = argparse.ArgumentParser()
@@ -118,15 +232,16 @@ def main():
     cfg = Config()
 
     if args.smoke_test:
-        cfg.adam_n_steps      = 30
-        cfg.n_tokens_total    = 500
-        cfg.hybrid_train_steps = 10
+        cfg.adam_n_steps       = 30
+        cfg.n_tokens_total     = 500
+        cfg.hybrid_train_steps = 50      # enough steps for a few corrections
         cfg.batch_size         = 4
         cfg.seq_len            = 16
         cfg.d_model            = 64
         cfg.d_state            = 4
         cfg.n_layers           = 2
-        cfg.hybrid_k_steps     = [5]
+        cfg.hybrid_k_steps     = [5, 10]
+        cfg.hybrid_eval_every  = 10
         print("⚠  SMOKE TEST MODE — reduced parameters")
 
     set_all_seeds(cfg.seed)
@@ -163,40 +278,27 @@ def main():
     res1 = experiment_1_residual_comparison(X, Y, cfg)
     plot_exp1_residual(res1, cfg.output_dir)
 
-
-    
     # ── 5. Experiments 2–3 ───────────────────────────────────────────────────
-   
     # ── DEBUG CHECK ─────────────────────────────────────────────────────────
     print("\n[DEBUG] Checking X and Y before Experiments 2–3...")
-
     print("X shape:", X.shape)
     print("Y shape:", Y.shape)
-
-    # dtype check
     if hasattr(X, "dtype"):
         print("X dtype:", X.dtype)
     if hasattr(Y, "dtype"):
         print("Y dtype:", Y.dtype)
-
-    # basic assertions
     assert X.ndim == 2, f"X must be 2D, got {X.shape}"
     assert Y.ndim == 2, f"Y must be 2D, got {Y.shape}"
     assert X.shape[0] == Y.shape[0], "Mismatch in number of samples between X and Y"
-
-    # optional stats
     try:
-        import numpy as np
         X_np = X.detach().cpu().numpy() if hasattr(X, "detach") else X
         Y_np = Y.detach().cpu().numpy() if hasattr(Y, "detach") else Y
-
         print("X mean/std:", np.mean(X_np), np.std(X_np))
         print("Y mean/std:", np.mean(Y_np), np.std(Y_np))
     except Exception as e:
         print("Could not compute stats:", e)
-
     print("[DEBUG] OK → proceeding to Experiments 2–3\n")
-        
+
     print("\n[5/7] Experiments 2–3: Structural characterisation...")
     res2 = experiment_2_anchor_sweep(X, Y, cfg)
     res3 = experiment_3_null_space(X, Y, cfg)
@@ -207,17 +309,19 @@ def main():
 
     # ── 6. Experiments 4–5 ───────────────────────────────────────────────────
     if not args.skip_training:
-        print("\n[6/7] Experiments 4–5: Hybrid training loop...")
-        train_batches = get_sequential_batches(train_ids, cfg)
-        val_batches   = get_sequential_batches(val_ids,   cfg)
-        print(f"  Train batches: {len(train_batches)}  Val batches: {len(val_batches)}")
+        print("\n[6/7] Experiments 4–5: Hybrid training + algebraic monitoring...")
+        print(f"  Using fixed (X, Y) batch extracted above "
+              f"[shape X={X.shape}, Y={Y.shape}]")
+        print(f"  Batch variation simulated via 5% Gaussian noise per step.")
 
         set_all_seeds(cfg.seed)
-        res4 = experiment_4_hybrid_training(model, train_batches, cfg, val_batches)
+        print("\n  ── Starting Experiment 4 ────────────────────────────────────")
+        res4 = experiment_4_hybrid_training(X, Y, cfg)
         plot_exp4_perplexity(res4, cfg.output_dir)
 
         set_all_seeds(cfg.seed)
-        res5 = experiment_5_algebraic_monitoring(model, train_batches, cfg)
+        print("\n  ── Starting Experiment 5 ────────────────────────────────────")
+        res5 = experiment_5_algebraic_monitoring(X, Y, cfg)
         plot_exp5_monitoring(res5, cfg.output_dir)
 
         all_results["exp4"] = res4
