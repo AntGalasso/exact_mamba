@@ -60,49 +60,53 @@ def set_all_seeds(seed: int):
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _print_exp4_summary(res4: dict):
-    """Extended console summary for Experiment 4."""
     w = 60
     full    = res4.get("_full", {})
     k_steps = res4.get("_k_step_values", [])
-    b_final = res4.get("_baseline_final", float("nan"))
+    b_final = res4.get("_b_final", float("nan"))
 
     print(f"\n  ┌{'─'*w}┐")
     print(f"  │{'EXPERIMENT 4  —  Hybrid Training Protocol':^{w}}│")
     print(f"  ├{'─'*w}┤")
-    print(f"  │  Metric: perplexity proxy = exp(MSE)  on val split{'':>9}│")
+    print(f"  │  Metric: ‖X_eval Cᵀ − Y_eval‖_F{'':>21}│")
     print(f"  ├{'─'*w}┤")
-    print(f"  │  Adam baseline  final ppl proxy : {b_final:.6f}{'':>18}│")
+    print(f"  │  Adam baseline  final residual : {b_final:.6e}{'':>8}│")
 
     for k in k_steps:
         if k not in full:
             continue
-        hf  = full[k]["perplexity"][-1]
+
+        hf = full[k]["residual"][-1]
         imp = (b_final - hf) / b_final * 100 if b_final > 0 else 0.0
         sgn = "▼" if imp > 0 else "▲"
+
         n_corr = len(full[k]["correction_steps"])
         corr_data = full[k].get("residual_at_correction", [])
         avg_drop = (float(np.mean([r["drop"] for r in corr_data]))
                     if corr_data else float("nan"))
-        print(f"  │  Hybrid k_step={k:3d}  ppl: {hf:.6f}  "
+
+        print(f"  │  Hybrid k_step={k:3d}  residual: {hf:.6e}  "
               f"({sgn}{abs(imp):.2f}%)  corr: {n_corr:3d}  "
               f"Δres: {avg_drop:.3e}  │")
 
-    # Highlight best hybrid
     best_k = None
-    best_ppl = b_final
+    best_res = b_final
+
     for k in k_steps:
         if k in full:
-            fp = full[k]["perplexity"][-1]
-            if fp < best_ppl:
-                best_ppl = fp
+            val = full[k]["residual"][-1]
+            if val < best_res:
+                best_res = val
                 best_k   = k
+
     print(f"  ├{'─'*w}┤")
     if best_k is not None:
-        imp = (b_final - best_ppl) / b_final * 100
-        print(f"  │  Best hybrid: k_step={best_k}  ppl={best_ppl:.6f}  "
-              f"improvement={imp:.2f}% vs baseline{'':>5}│")
+        imp = (b_final - best_res) / b_final * 100
+        print(f"  │  Best hybrid: k_step={best_k}  residual={best_res:.6e}  "
+              f"improvement={imp:.2f}% vs baseline{'':>2}│")
     else:
         print(f"  │  No hybrid variant outperformed baseline.{'':>18}│")
+
     print(f"  └{'─'*w}┘")
 
 
@@ -234,7 +238,7 @@ def main():
     if args.smoke_test:
         cfg.adam_n_steps       = 30
         cfg.n_tokens_total     = 500
-        cfg.hybrid_train_steps = 50      # enough steps for a few corrections
+        cfg.hybrid_train_steps = 1000      # enough steps for a few corrections
         cfg.batch_size         = 4
         cfg.seq_len            = 16
         cfg.d_model            = 64
